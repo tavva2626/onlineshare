@@ -81,7 +81,7 @@ export default function FileUpload({ file, onFileSelect, onFileClear }) {
           {isDragActive ? 'Drop your file here...' : 'Drag & drop a file, or click to browse'}
         </p>
         <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">
-          PDF, images, docs, ZIP, code files · Max {formatBytes(maxSize)}
+          All file types supported (PDF, PPT, DOCX, images, videos, code, etc.) · Max {formatBytes(maxSize)}
         </p>
       </div>
     </div>

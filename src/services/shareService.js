@@ -10,6 +10,7 @@
 import { db, isFirebaseConfigured } from '../firebase';
 import {
   doc, setDoc, getDoc, updateDoc, deleteDoc, increment, Timestamp,
+  collection, query, where, getDocs,
 } from 'firebase/firestore';
 import { isExpired } from '../utils/helpers';
 
@@ -157,7 +158,11 @@ export async function retrieveShare(code) {
     const snap = await getDoc(doc(db, 'shares', code));
     if (!snap.exists()) return { status: 'not_found' };
     const data = snap.data();
-    if (isExpired(data.expiresAt)) return { status: 'expired' };
+    if (isExpired(data.expiresAt)) {
+      // Auto-delete expired share from Firestore
+      try { await deleteDoc(doc(db, 'shares', code)); } catch (e) { console.warn('Cleanup failed:', e); }
+      return { status: 'expired' };
+    }
 
     // Reconstruct file URL from embedded data or local cache
     if (data.fileUrl === 'firestore-embedded' && data.fileData) {
@@ -223,4 +228,50 @@ export async function deleteShare(code) {
   const shares = getDemoShares();
   delete shares[code];
   saveDemoShares(shares);
+}
+
+/**
+ * Cleanup expired shares from Firestore.
+ * Call this on app load — it runs silently in the background.
+ * Deletes all documents where expiresAt < now.
+ */
+export async function cleanupExpiredShares() {
+  if (!isFirebaseConfigured()) {
+    // Demo mode: clean up localStorage
+    const shares = getDemoShares();
+    let changed = false;
+    for (const code in shares) {
+      if (isExpired(shares[code].expiresAt)) {
+        delete shares[code];
+        changed = true;
+      }
+    }
+    if (changed) saveDemoShares(shares);
+    return;
+  }
+
+  try {
+    const now = Timestamp.now();
+    const sharesRef = collection(db, 'shares');
+    const expiredQuery = query(sharesRef, where('expiresAt', '<', now));
+    const snapshot = await getDocs(expiredQuery);
+
+    if (snapshot.empty) return;
+
+    let deleted = 0;
+    for (const docSnap of snapshot.docs) {
+      try {
+        await deleteDoc(doc(db, 'shares', docSnap.id));
+        deleted++;
+      } catch (e) {
+        console.warn('Failed to delete expired share:', docSnap.id, e);
+      }
+    }
+
+    if (deleted > 0) {
+      console.log(`🧹 Cleaned up ${deleted} expired share(s) from Firestore`);
+    }
+  } catch (e) {
+    console.warn('Cleanup sweep failed:', e);
+  }
 }

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
@@ -8,8 +9,13 @@ import Send from './pages/Send';
 import Receive from './pages/Receive';
 import About from './pages/About';
 import Privacy from './pages/Privacy';
+import { cleanupExpiredShares } from './services/shareService';
 
 export default function App() {
+  // Run cleanup on app load — silently deletes expired shares from Firestore
+  useEffect(() => {
+    cleanupExpiredShares();
+  }, []);
   return (
     <ThemeProvider>
       <BrowserRouter>

@@ -15,7 +15,7 @@ export default function Footer() {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-accent-500 flex items-center justify-center">
                 <HiOutlineLightningBolt className="w-4 h-4 text-white" />
               </div>
-              <span className="text-lg font-bold gradient-text">CodeDrop</span>
+              <span className="text-lg font-bold gradient-text">QuickShare24</span>
             </div>
             <p className="text-surface-500 dark:text-surface-400 text-sm leading-relaxed max-w-md">
               Instantly share text, code, and files with anyone using a temporary access code.
@@ -73,7 +73,7 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="mt-10 pt-6 border-t border-surface-200/50 dark:border-surface-800/50 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-surface-400 dark:text-surface-500 flex items-center gap-1">
-            © {year} CodeDrop. Made with <FiHeart className="w-3 h-3 text-red-400" /> for the community.
+            © {year} QuickShare24. Made with <FiHeart className="w-3 h-3 text-red-400" /> for the community.
           </p>
           <div className="flex items-center gap-4">
             <a

@@ -15,10 +15,10 @@ export default function About() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h1 className="text-3xl md:text-5xl font-bold text-surface-900 dark:text-surface-100 mb-4">
-            About <span className="gradient-text">CodeDrop</span>
+            About <span className="gradient-text">QuickShare24</span>
           </h1>
           <p className="text-lg text-surface-500 dark:text-surface-400 max-w-2xl mx-auto leading-relaxed">
-            CodeDrop is a fast, secure, and temporary content sharing platform. Share text, code, and files using a simple 6-character access code — no accounts, no emails, no hassle.
+            QuickShare24 is a fast, secure, and temporary content sharing platform. Share text, code, and files using a simple 6-character access code — no accounts, no emails, no hassle.
           </p>
         </div>
 
@@ -28,7 +28,7 @@ export default function About() {
             We believe sharing should be instant and ephemeral. Too many tools require accounts, subscriptions, or complex setups just to send a snippet of code or a quick file.
           </p>
           <p className="text-surface-600 dark:text-surface-300 leading-relaxed">
-            CodeDrop strips away the complexity. You drop your content, get a code, and share it. The recipient enters the code and gets the content. After 24 hours, everything is automatically cleaned up. Simple, secure, and private.
+            QuickShare24 strips away the complexity. You drop your content, get a code, and share it. The recipient enters the code and gets the content. After 24 hours, everything is automatically cleaned up. Simple, secure, and private.
           </p>
         </div>
 

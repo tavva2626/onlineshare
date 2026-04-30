@@ -30,7 +30,7 @@ const features = [
   {
     icon: FiFile,
     title: 'File Support',
-    desc: 'Share PDFs, images, documents, ZIP files, and more with drag & drop.',
+    desc: 'Share any file — PDFs, PPTs, images, videos, code, ZIPs, and more with drag & drop.',
     color: 'from-amber-500 to-amber-600',
   },
   {
@@ -86,14 +86,6 @@ export default function Home() {
               <FiDownload className="w-5 h-5" />
               Retrieve Content
             </Link>
-          </div>
-
-          {/* Demo code display */}
-          <div className="mt-16 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-            <div className="inline-flex items-center gap-4 glass-card px-8 py-5">
-              <span className="text-sm text-surface-400 dark:text-surface-500">Your code:</span>
-              <span className="code-display text-3xl md:text-4xl tracking-[0.25em]">A7K2P9</span>
-            </div>
           </div>
         </div>
       </section>
@@ -163,7 +155,7 @@ export default function Home() {
             <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-60" />
             <div className="relative">
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-                Ready to drop some code?
+                Ready to share something?
               </h2>
               <p className="text-brand-100 text-lg mb-8 max-w-md mx-auto">
                 Start sharing in seconds. No account required.

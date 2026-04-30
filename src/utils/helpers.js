@@ -31,37 +31,11 @@ export function formatCountdown(ms) {
 }
 
 /**
- * Validate allowed file types.
+ * Validate file — accepts ALL file types.
+ * Only checks if the file has a name (basic sanity check).
  */
-const ALLOWED_TYPES = [
-  'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'application/zip',
-  'application/x-zip-compressed',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/msword',
-  'text/plain',
-  'text/csv',
-  'application/json',
-  'application/javascript',
-  'text/html',
-  'text/css',
-  'text/markdown',
-];
-
-const ALLOWED_EXTENSIONS = [
-  '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg',
-  '.zip', '.docx', '.doc', '.txt', '.csv', '.json', '.js',
-  '.html', '.css', '.md', '.py', '.java', '.cpp', '.c', '.ts', '.tsx', '.jsx',
-];
-
 export function isFileAllowed(file) {
-  const ext = '.' + file.name.split('.').pop().toLowerCase();
-  return ALLOWED_TYPES.includes(file.type) || ALLOWED_EXTENSIONS.includes(ext);
+  return file && file.name && file.size > 0;
 }
 
 /**

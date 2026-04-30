@@ -44,7 +44,7 @@ export default function Navbar() {
               <HiOutlineLightningBolt className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold gradient-text hidden sm:block">
-              CodeDrop
+              QuickShare24
             </span>
           </Link>
 
