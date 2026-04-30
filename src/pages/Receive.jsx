@@ -91,16 +91,39 @@ export default function Receive() {
   const handleDownload = () => {
     if (!share?.fileUrl) return;
 
-    // For demo mode data URLs, create a download link
-    if (share.fileUrl.startsWith('data:')) {
-      const link = document.createElement('a');
-      link.href = share.fileUrl;
-      link.download = share.fileName || 'download';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      // Firebase URL — open in new tab
+    try {
+      if (share.fileUrl.startsWith('data:')) {
+        // Convert data URL to Blob for reliable downloads on ALL devices (including mobile)
+        const [header, base64Data] = share.fileUrl.split(',');
+        const mimeMatch = header.match(/data:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+        const byteString = atob(base64Data);
+        const byteArray = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) {
+          byteArray[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([byteArray], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = share.fileName || 'download';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+
+        // Cleanup after short delay
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        }, 500);
+      } else {
+        // External URL — open in new tab
+        window.open(share.fileUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Download failed:', err);
+      // Fallback: open data URL directly
       window.open(share.fileUrl, '_blank');
     }
   };
