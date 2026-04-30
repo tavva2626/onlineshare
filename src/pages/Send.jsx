@@ -71,9 +71,6 @@ export default function Send() {
       });
 
       toast.success('Share created successfully!');
-      if (result.fileStorageMode === 'local') {
-        toast('Large file stored locally — retrievable on this browser only.', { icon: '📁', duration: 5000 });
-      }
     } catch (error) {
       console.error('Share creation error:', error);
       const errMsg = error?.message || error?.code || 'Unknown error';
