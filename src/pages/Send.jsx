@@ -1,19 +1,34 @@
-import { useState } from 'react';
-import { generateCode, formatBytes, formatCountdown } from '../utils/helpers';
+import { useState, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { generateCode, formatBytes, formatCountdown, getMaxFileSize } from '../utils/helpers';
 import { useRecentShares, useCountdown } from '../hooks/useShares';
 import { createShare, codeExists } from '../services/shareService';
 import { isFirebaseConfigured } from '../firebase';
-import FileUpload from '../components/ui/FileUpload';
 import CodeEditor from '../components/ui/CodeEditor';
 import QRCode from '../components/ui/QRCode';
 import Spinner from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
-import { FiSend, FiCopy, FiCheck, FiLock, FiEye, FiTrash2, FiClock, FiArrowRight, FiCode, FiFileText, FiInfo } from 'react-icons/fi';
+import {
+  FiSend, FiCopy, FiCheck, FiLock, FiEye, FiTrash2, FiClock, FiArrowRight,
+  FiCode, FiFileText, FiImage, FiFolder, FiPackage, FiX, FiUploadCloud, FiFile, FiInfo,
+} from 'react-icons/fi';
+
+const MODES = [
+  { id: 'text', label: 'Text', icon: FiFileText, desc: 'Messages & notes' },
+  { id: 'images', label: 'Images', icon: FiImage, desc: 'Photos & images' },
+  { id: 'files', label: 'Files', icon: FiFolder, desc: 'Any file type' },
+  { id: 'code', label: 'Code', icon: FiCode, desc: 'Code snippets' },
+  { id: 'everything', label: 'Everything', icon: FiPackage, desc: 'Combine all' },
+];
+
+const MAX_FILES = 10;
 
 export default function Send() {
   const [mode, setMode] = useState('text');
   const [message, setMessage] = useState('');
-  const [file, setFile] = useState(null);
+  const [codeContent, setCodeContent] = useState('');
+  const [codeLanguage, setCodeLanguage] = useState('javascript');
+  const [files, setFiles] = useState([]);
   const [password, setPassword] = useState('');
   const [oneTimeView, setOneTimeView] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -23,6 +38,32 @@ export default function Send() {
   const [copied, setCopied] = useState(false);
   const { shares, addShare, removeShare, clearAll } = useRecentShares();
   const remaining = useCountdown(expiresAt);
+  const maxSize = getMaxFileSize();
+
+  // File drop handler
+  const onDrop = useCallback((accepted, rejected) => {
+    if (rejected?.length) {
+      toast.error(`Some files rejected. Max size: ${formatBytes(maxSize)}`);
+    }
+    const remaining = MAX_FILES - files.length;
+    if (remaining <= 0) { toast.error(`Max ${MAX_FILES} files allowed.`); return; }
+
+    let toAdd = accepted.slice(0, remaining);
+    if (mode === 'images') {
+      toAdd = toAdd.filter(f => f.type.startsWith('image/'));
+      if (toAdd.length < accepted.length) toast('Non-image files were filtered out.', { icon: '🖼️' });
+    }
+    setFiles(prev => [...prev, ...toAdd]);
+  }, [files.length, mode, maxSize]);
+
+  const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    maxSize,
+    multiple: true,
+    accept: mode === 'images' ? { 'image/*': [] } : undefined,
+  });
 
   const handleCopyCode = async () => {
     if (!generatedCode) return;
@@ -35,10 +76,19 @@ export default function Send() {
   };
 
   const handleSubmit = async () => {
-    if (!message.trim() && !file) { toast.error('Please enter a message or upload a file.'); return; }
+    const hasText = message.trim();
+    const hasCode = codeContent.trim();
+    const hasFiles = files.length > 0;
+
+    // Validate per mode
+    if (mode === 'text' && !hasText) { toast.error('Enter a message.'); return; }
+    if (mode === 'images' && !hasFiles) { toast.error('Add at least one image.'); return; }
+    if (mode === 'files' && !hasFiles) { toast.error('Add at least one file.'); return; }
+    if (mode === 'code' && !hasCode) { toast.error('Enter some code.'); return; }
+    if (mode === 'everything' && !hasText && !hasCode && !hasFiles) { toast.error('Add something to share.'); return; }
+
     setLoading(true); setProgress(0);
     try {
-      // Generate unique code with collision check
       let code, attempts = 0;
       do {
         code = generateCode();
@@ -46,42 +96,48 @@ export default function Send() {
         if (!exists) break;
         attempts++;
       } while (attempts < 10);
-
-      if (attempts >= 10) { toast.error('Unable to generate unique code. Try again.'); setLoading(false); return; }
+      if (attempts >= 10) { toast.error('Unable to generate unique code.'); setLoading(false); return; }
 
       const shareData = {
         code,
-        message: message.trim(),
         contentType: mode,
+        message: (mode === 'text' || mode === 'everything') ? message.trim() : '',
+        codeContent: (mode === 'code' || mode === 'everything') ? codeContent.trim() : '',
+        codeLanguage: (mode === 'code' || mode === 'everything') ? codeLanguage : '',
         oneTimeView,
         passwordProtected: !!password,
         password: password || '',
       };
 
-      const result = await createShare(shareData, file, setProgress);
+      const filesToUpload = (mode === 'images' || mode === 'files' || mode === 'everything') ? files : [];
+      const result = await createShare(shareData, filesToUpload, setProgress);
 
       setGeneratedCode(result.code);
       setExpiresAt(result.expiresAt);
-
       addShare({
         code: result.code,
-        type: file ? 'file' : 'text',
-        name: file ? file.name : message.slice(0, 40),
+        type: mode,
+        name: hasText ? message.slice(0, 40) : hasFiles ? `${files.length} file(s)` : 'Code snippet',
         createdAt: new Date().toISOString(),
       });
-
-      toast.success('Share created successfully!');
+      toast.success('Share created!');
     } catch (error) {
       console.error('Share creation error:', error);
-      const errMsg = error?.message || error?.code || 'Unknown error';
-      toast.error('Failed to create share: ' + errMsg);
+      toast.error('Failed: ' + (error?.message || 'Unknown error'));
     } finally { setLoading(false); }
   };
 
   const handleReset = () => {
-    setMessage(''); setFile(null); setPassword(''); setOneTimeView(false);
-    setGeneratedCode(null); setExpiresAt(null); setProgress(0); setCopied(false);
+    setMessage(''); setCodeContent(''); setFiles([]); setPassword('');
+    setOneTimeView(false); setGeneratedCode(null); setExpiresAt(null);
+    setProgress(0); setCopied(false);
   };
+
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0) + new Blob([message, codeContent]).size;
+  const showText = mode === 'text' || mode === 'everything';
+  const showFiles = mode === 'images' || mode === 'files' || mode === 'everything';
+  const showCode = mode === 'code' || mode === 'everything';
+  const canSubmit = !loading && (message.trim() || codeContent.trim() || files.length > 0);
 
   return (
     <div className="min-h-screen pt-24 md:pt-32 pb-16">
@@ -91,7 +147,7 @@ export default function Send() {
             <span className="gradient-text">Send</span> Content
           </h1>
           <p className="mt-2 text-surface-500 dark:text-surface-400">
-            Drop a message, code snippet, or file to generate a share code.
+            Choose what you want to share, then generate a code.
           </p>
         </div>
 
@@ -100,12 +156,13 @@ export default function Send() {
           <div className="mb-6 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 animate-fade-in">
             <FiInfo className="w-5 h-5 text-amber-500 flex-shrink-0" />
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              <strong>Demo Mode</strong> — Data is stored in your browser's localStorage. Add Firebase credentials to <code className="text-xs bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">.env</code> for real cloud storage.
+              <strong>Demo Mode</strong> — Data stored in localStorage only.
             </p>
           </div>
         )}
 
         {generatedCode ? (
+          /* ─── Success State ─── */
           <div className="animate-scale-in">
             <div className="glass-card p-8 md:p-12 text-center">
               <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/25">
@@ -147,38 +204,141 @@ export default function Send() {
             </div>
           </div>
         ) : (
+          /* ─── Input State ─── */
           <div className="space-y-6 animate-fade-in">
-            {/* Mode toggle */}
-            <div className="flex items-center gap-2 p-1 rounded-xl bg-surface-100 dark:bg-surface-800 w-fit mx-auto">
-              <button onClick={() => setMode('text')} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-surface-500 dark:text-surface-400'}`}>
-                <FiFileText className="w-4 h-4" />Text / Message
-              </button>
-              <button onClick={() => setMode('code')} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${mode === 'code' ? 'bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-surface-500 dark:text-surface-400'}`}>
-                <FiCode className="w-4 h-4" />Code Snippet
-              </button>
+            {/* ─── Mode Selector ─── */}
+            <div className="glass-card p-2">
+              <div className="grid grid-cols-5 gap-1">
+                {MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => { setMode(m.id); setFiles([]); }}
+                    id={`mode-${m.id}`}
+                    className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl text-xs font-medium transition-all duration-300 ${
+                      mode === m.id
+                        ? 'bg-gradient-to-br from-brand-500 to-accent-500 text-white shadow-lg shadow-brand-500/25 scale-[1.02]'
+                        : 'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+                    }`}
+                  >
+                    <m.icon className="w-5 h-5" />
+                    <span className="hidden sm:block">{m.label}</span>
+                    <span className="sm:hidden">{m.label.slice(0, 4)}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Content input */}
-            <div className="glass-card p-6">
-              <label className="block text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">
-                {mode === 'code' ? 'Code Snippet' : 'Message / Text'}
-              </label>
-              {mode === 'code' ? (
-                <CodeEditor value={message} onChange={setMessage} />
-              ) : (
-                <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type your message, paste text, or leave empty if uploading a file..." rows={6} className="input-field resize-y min-h-[150px]" id="message-input" />
-              )}
+            {/* Mode description */}
+            <div className="text-center">
+              <span className="text-xs text-surface-400 dark:text-surface-500">
+                {MODES.find(m => m.id === mode)?.desc}
+              </span>
             </div>
 
-            {/* File upload */}
-            <div className="glass-card p-6">
-              <label className="block text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">
-                File Upload <span className="font-normal text-surface-400">(optional)</span>
-              </label>
-              <FileUpload file={file} onFileSelect={setFile} onFileClear={() => setFile(null)} />
-            </div>
+            {/* ─── Text Section ─── */}
+            {showText && (
+              <div className="glass-card p-6 animate-fade-in">
+                <label className="block text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">
+                  <FiFileText className="inline w-4 h-4 mr-1.5 -mt-0.5" />
+                  Message / Text
+                </label>
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Type your message, paste notes, or leave empty..."
+                  rows={5}
+                  className="input-field resize-y min-h-[120px]"
+                  id="message-input"
+                />
+              </div>
+            )}
 
-            {/* Share options */}
+            {/* ─── Files / Images Section ─── */}
+            {showFiles && (
+              <div className="glass-card p-6 animate-fade-in">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-semibold text-surface-700 dark:text-surface-300">
+                    {mode === 'images' ? (
+                      <><FiImage className="inline w-4 h-4 mr-1.5 -mt-0.5" />Images</>
+                    ) : (
+                      <><FiFolder className="inline w-4 h-4 mr-1.5 -mt-0.5" />Files</>
+                    )}
+                  </label>
+                  <span className="text-xs text-surface-400">
+                    {files.length}/{MAX_FILES} files
+                  </span>
+                </div>
+
+                {/* Drop zone */}
+                <div
+                  {...getRootProps()}
+                  id="file-drop-zone"
+                  className={`drop-zone flex flex-col items-center gap-3 text-center mb-4 ${isDragActive ? 'drop-zone-active' : ''}`}
+                >
+                  <input {...getInputProps()} />
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500/10 to-accent-500/10 dark:from-brand-500/20 dark:to-accent-500/20 flex items-center justify-center">
+                    <FiUploadCloud className={`w-7 h-7 text-brand-500 transition-transform duration-300 ${isDragActive ? 'scale-110' : ''}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-surface-700 dark:text-surface-300">
+                      {isDragActive ? 'Drop files here...' : 'Drag & drop files, or click to browse'}
+                    </p>
+                    <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">
+                      {mode === 'images' ? 'PNG, JPG, GIF, WebP, SVG' : 'All file types supported'} · Max {formatBytes(maxSize)} each · Up to {MAX_FILES} files
+                    </p>
+                  </div>
+                </div>
+
+                {/* File list */}
+                {files.length > 0 && (
+                  <div className="space-y-2">
+                    {files.map((f, idx) => (
+                      <div key={`${f.name}-${idx}`} className="flex items-center gap-3 p-3 rounded-xl bg-surface-50 dark:bg-surface-800/50 group animate-scale-in">
+                        {/* Image preview thumbnail */}
+                        {f.type?.startsWith('image/') ? (
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-200 dark:bg-surface-700 flex-shrink-0">
+                            <img src={URL.createObjectURL(f)} alt={f.name} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-brand-500/10 dark:bg-brand-500/20 flex items-center justify-center flex-shrink-0">
+                            <FiFile className="w-5 h-5 text-brand-500" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">{f.name}</p>
+                          <p className="text-xs text-surface-400">{formatBytes(f.size)}</p>
+                        </div>
+                        <button
+                          onClick={() => removeFile(idx)}
+                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-surface-400 hover:text-red-500 transition-all"
+                          aria-label="Remove file"
+                        >
+                          <FiX className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    {/* Total size bar */}
+                    <div className="flex items-center justify-between px-1 pt-1">
+                      <span className="text-xs text-surface-400">Total: <strong>{formatBytes(files.reduce((s, f) => s + f.size, 0))}</strong></span>
+                      <button onClick={() => setFiles([])} className="text-xs text-surface-400 hover:text-red-500 transition-colors">Clear all</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── Code Section ─── */}
+            {showCode && (
+              <div className="glass-card p-6 animate-fade-in">
+                <label className="block text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">
+                  <FiCode className="inline w-4 h-4 mr-1.5 -mt-0.5" />
+                  Code Snippet
+                </label>
+                <CodeEditor value={codeContent} onChange={setCodeContent} language={codeLanguage} />
+              </div>
+            )}
+
+            {/* ─── Share Options ─── */}
             <div className="glass-card p-6">
               <label className="block text-sm font-semibold text-surface-700 dark:text-surface-300 mb-4">Share Options</label>
               <div className="space-y-4">
@@ -203,7 +363,7 @@ export default function Send() {
               </div>
             </div>
 
-            {/* Upload progress */}
+            {/* ─── Progress ─── */}
             {loading && progress > 0 && progress < 100 && (
               <div className="glass-card p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -214,23 +374,23 @@ export default function Send() {
               </div>
             )}
 
-            {/* Submit */}
-            <button onClick={handleSubmit} disabled={loading || (!message.trim() && !file)} className="btn-primary w-full py-4 text-lg" id="generate-code-btn">
+            {/* ─── Submit ─── */}
+            <button onClick={handleSubmit} disabled={!canSubmit} className="btn-primary w-full py-4 text-lg" id="generate-code-btn">
               {loading ? <><Spinner size="sm" />Generating...</> : <><FiSend className="w-5 h-5" />Generate Share Code</>}
             </button>
 
-            {/* File size indicator */}
-            {file && (
+            {/* Total size */}
+            {totalSize > 0 && (
               <div className="text-center">
                 <span className="text-xs text-surface-400 dark:text-surface-500">
-                  Total share size: <strong>{formatBytes(file.size + new Blob([message]).size)}</strong>
+                  Total share size: <strong>{formatBytes(totalSize)}</strong>
                 </span>
               </div>
             )}
           </div>
         )}
 
-        {/* Recent shares */}
+        {/* ─── Recent Shares ─── */}
         {shares.length > 0 && (
           <div className="mt-12 animate-fade-in">
             <div className="flex items-center justify-between mb-4">

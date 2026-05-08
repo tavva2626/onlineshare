@@ -30,7 +30,7 @@ const features = [
   {
     icon: FiFile,
     title: 'File Support',
-    desc: 'Share any file — PDFs, PPTs, images, videos, code, ZIPs, and more with drag & drop.',
+    desc: 'Upload multiple files at once — PDFs, PPTs, images, videos, ZIPs, and more with drag & drop.',
     color: 'from-amber-500 to-amber-600',
   },
   {
