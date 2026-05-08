@@ -6,7 +6,7 @@ const features = [
   {
     icon: FiZap,
     title: 'Instant Sharing',
-    desc: 'Generate a 6-character code and share anything in seconds. No signup needed.',
+    desc: 'Generate a 4-digit code and share anything in seconds. No signup needed.',
     color: 'from-brand-500 to-brand-600',
   },
   {
@@ -43,7 +43,7 @@ const features = [
 
 const steps = [
   { num: '01', title: 'Drop Your Content', desc: 'Paste text, write code, or upload a file.' },
-  { num: '02', title: 'Get Your Code', desc: 'Receive a unique 6-character access code instantly.' },
+  { num: '02', title: 'Get Your Code', desc: 'Receive a unique 4-digit access code instantly.' },
   { num: '03', title: 'Share the Code', desc: 'Tell the code to anyone — they enter it to retrieve your content.' },
 ];
 
@@ -68,7 +68,7 @@ export default function Home() {
 
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-balance animate-slide-up">
             Share anything with a{' '}
-            <span className="gradient-text">6-character code</span>
+            <span className="gradient-text">4-digit code</span>
           </h1>
 
           <p className="mt-6 text-lg md:text-xl text-surface-500 dark:text-surface-400 max-w-2xl mx-auto animate-slide-up text-balance" style={{ animationDelay: '0.1s' }}>

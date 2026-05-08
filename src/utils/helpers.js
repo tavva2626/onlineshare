@@ -1,11 +1,10 @@
 /**
- * Generate a cryptographically random 6-character alphanumeric code.
+ * Generate a cryptographically random 4-digit numeric code.
  */
-export function generateCode(length = 6) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid confusion
-  const array = new Uint32Array(length);
+export function generateCode() {
+  const array = new Uint32Array(4);
   crypto.getRandomValues(array);
-  return Array.from(array, (v) => chars[v % chars.length]).join('');
+  return Array.from(array, (v) => String(v % 10)).join('');
 }
 
 /**

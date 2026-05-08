@@ -72,7 +72,7 @@ export default function Receive() {
 
   const handleRetrieve = async (overrideCode) => {
     const c = (overrideCode || code).trim().toUpperCase();
-    if (!c || c.length < 4) { toast.error('Enter a valid share code.'); return; }
+    if (!c || c.length < 4) { toast.error('Enter a valid 4-digit code.'); return; }
     setLoading(true); setError(''); setShare(null); setUnlocked(false);
 
     try {
@@ -145,7 +145,7 @@ export default function Receive() {
           <h1 className="text-3xl md:text-4xl font-bold text-surface-900 dark:text-surface-100">
             <span className="gradient-text">Receive</span> Content
           </h1>
-          <p className="mt-2 text-surface-500 dark:text-surface-400">Enter the 6-character code to retrieve shared content.</p>
+          <p className="mt-2 text-surface-500 dark:text-surface-400">Enter the 4-digit code to retrieve shared content.</p>
         </div>
 
         {/* Demo mode banner */}
@@ -161,7 +161,7 @@ export default function Receive() {
         {/* Code Input */}
         <div className="glass-card p-6 mb-8">
           <div className="flex flex-col sm:flex-row gap-3">
-            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && handleRetrieve()} placeholder="Enter access code" maxLength={6} className="input-field text-center font-mono text-2xl tracking-[0.2em] uppercase flex-1" id="code-input" />
+            <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => e.key === 'Enter' && handleRetrieve()} placeholder="Enter 4-digit code" maxLength={4} inputMode="numeric" pattern="[0-9]*" className="input-field text-center font-mono text-2xl tracking-[0.3em] flex-1" id="code-input" />
             <button onClick={() => handleRetrieve()} disabled={loading || !code.trim()} className="btn-primary px-8" id="retrieve-btn">
               {loading ? <Spinner size="sm" /> : <><FiSearch className="w-5 h-5" />Retrieve</>}
             </button>

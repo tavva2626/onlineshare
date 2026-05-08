@@ -18,7 +18,7 @@ export default function About() {
             About <span className="gradient-text">QuickShare24</span>
           </h1>
           <p className="text-lg text-surface-500 dark:text-surface-400 max-w-2xl mx-auto leading-relaxed">
-            QuickShare24 is a fast, secure, and temporary content sharing platform. Share text, code, and files using a simple 6-character access code — no accounts, no emails, no hassle.
+            QuickShare24 is a fast, secure, and temporary content sharing platform. Share text, code, and files using a simple 4-digit access code — no accounts, no emails, no hassle.
           </p>
         </div>
 
