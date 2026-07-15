@@ -3,7 +3,6 @@ import { Toaster } from 'react-hot-toast';
 import { useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/layout/Navbar';
-import Footer from './components/layout/Footer';
 import Home from './pages/Home';
 import Send from './pages/Send';
 import Receive from './pages/Receive';
@@ -46,7 +45,7 @@ export default function App() {
               <Route path="/privacy" element={<Privacy />} />
             </Routes>
           </main>
-          <Footer />
+
         </div>
       </BrowserRouter>
     </ThemeProvider>
