@@ -4,10 +4,16 @@
  * Strategy:
  * - Text/code: stored in Firestore (works cross-browser)
  * - Multiple files supported: each file is chunked into Firestore subcollection
- * - Files ≤ 700KB base64: stored inline in main doc
- * - Files > 700KB base64: split into 700KB chunks in subcollection
+ * - Files split into 950KB chunks in subcollection
  * - ALL files work cross-browser/cross-device
  * - Firebase Storage is NOT used (requires Blaze plan)
+ *
+ * Performance optimizations (v2):
+ * - All files converted to Base64 in PARALLEL
+ * - Chunk uploads run 6 at a time (was 1 at a time)
+ * - Chunk downloads run ALL at once in parallel
+ * - Chunk size increased to 950KB (fewer network requests)
+ * - Cleanup and delete operations run in parallel
  *
  * Data model:
  *   shares/{code} = { message, codeContent, codeLanguage, files: [{ name, type, size, chunkStart, chunkCount }], totalChunks, ... }
@@ -21,7 +27,8 @@ import {
 import { isExpired } from '../utils/helpers';
 
 /* ─── Constants ─── */
-const CHUNK_SIZE = 700 * 1024; // 700KB per chunk
+const CHUNK_SIZE = 950 * 1024;  // 950KB per chunk (was 700KB — fewer chunks = fewer network calls)
+const UPLOAD_BATCH = 6;         // upload 6 chunks simultaneously
 const DEMO_KEY = 'quickshare24-demo-shares';
 
 /* ─── localStorage helpers (demo mode only) ─── */
@@ -43,7 +50,7 @@ function fileToBase64(file) {
   });
 }
 
-/* ─── Chunk helpers ─── */
+/* ─── Chunk helpers (OPTIMIZED) ─── */
 
 function splitIntoChunks(base64String) {
   const chunks = [];
@@ -53,32 +60,59 @@ function splitIntoChunks(base64String) {
   return chunks;
 }
 
-async function writeChunks(code, chunks, startIndex) {
-  for (let i = 0; i < chunks.length; i++) {
-    const globalIndex = startIndex + i;
-    await setDoc(doc(db, 'shares', code, 'chunks', String(globalIndex)), {
-      data: chunks[i],
-      index: globalIndex,
-    });
+/**
+ * Upload chunks in parallel batches of UPLOAD_BATCH.
+ * @param {string} code - share code
+ * @param {{ globalIndex: number, data: string }[]} allChunks - flat array of all chunks across all files
+ * @param {function} onBatchDone - called after each batch completes with (chunksCompleted, totalChunks)
+ */
+async function writeChunksParallel(code, allChunks, onBatchDone) {
+  for (let i = 0; i < allChunks.length; i += UPLOAD_BATCH) {
+    const batch = allChunks.slice(i, i + UPLOAD_BATCH);
+    await Promise.all(
+      batch.map(chunk =>
+        setDoc(doc(db, 'shares', code, 'chunks', String(chunk.globalIndex)), {
+          data: chunk.data,
+          index: chunk.globalIndex,
+        })
+      )
+    );
+    onBatchDone?.(Math.min(i + UPLOAD_BATCH, allChunks.length), allChunks.length);
   }
 }
 
-async function readChunks(code, chunkStart, chunkCount) {
-  const pieces = [];
-  for (let i = 0; i < chunkCount; i++) {
-    const snap = await getDoc(doc(db, 'shares', code, 'chunks', String(chunkStart + i)));
-    if (snap.exists()) {
-      pieces.push({ index: snap.data().index, data: snap.data().data });
-    }
-  }
-  pieces.sort((a, b) => a.index - b.index);
-  return pieces.map(c => c.data).join('');
+/**
+ * Download ALL chunks for a file in parallel (single Promise.all burst).
+ * This is the #1 speed improvement — was sequential, now all at once.
+ */
+async function readChunksParallel(code, chunkStart, chunkCount) {
+  if (chunkCount === 0) return '';
+
+  // Fire ALL reads simultaneously
+  const promises = Array.from({ length: chunkCount }, (_, i) =>
+    getDoc(doc(db, 'shares', code, 'chunks', String(chunkStart + i)))
+  );
+
+  const snaps = await Promise.all(promises);
+  return snaps
+    .filter(s => s.exists())
+    .map(s => s.data())
+    .sort((a, b) => a.index - b.index)
+    .map(c => c.data)
+    .join('');
 }
 
-async function deleteAllChunks(code, totalChunks) {
-  for (let i = 0; i < totalChunks; i++) {
-    try { await deleteDoc(doc(db, 'shares', code, 'chunks', String(i))); }
-    catch { /* ignore */ }
+/**
+ * Delete chunks in parallel batches.
+ */
+async function deleteChunksParallel(code, totalChunks) {
+  const DELETE_BATCH = 10;
+  for (let i = 0; i < totalChunks; i += DELETE_BATCH) {
+    const batch = Array.from(
+      { length: Math.min(DELETE_BATCH, totalChunks - i) },
+      (_, j) => deleteDoc(doc(db, 'shares', code, 'chunks', String(i + j))).catch(() => {})
+    );
+    await Promise.all(batch);
   }
 }
 
@@ -94,6 +128,7 @@ export async function codeExists(code) {
 
 /**
  * Create a new share with multiple files support.
+ * OPTIMIZED: parallel file reading + parallel chunk uploads.
  * @param {object} shareData - { code, contentType, message, codeContent, codeLanguage, oneTimeView, passwordProtected, password }
  * @param {File[]} files - array of File objects
  * @param {function} onProgress - called with 0-100
@@ -102,41 +137,51 @@ export async function createShare(shareData, files = [], onProgress) {
   const now = new Date();
   const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const fileMeta = []; // { name, type, size, chunkStart, chunkCount }
-  let totalChunks = 0;
-  let chunkCursor = 0;
-
   onProgress?.(5);
 
   if (isFirebaseConfigured()) {
-    // Process each file — convert to base64 and chunk
-    for (let f = 0; f < files.length; f++) {
-      const file = files[f];
-      const base64 = await fileToBase64(file);
-      const chunks = splitIntoChunks(base64);
+    // ── Step 1: Convert ALL files to Base64 in PARALLEL ──
+    const base64Array = files.length > 0
+      ? await Promise.all(files.map(f => fileToBase64(f)))
+      : [];
 
+    onProgress?.(20);
+
+    // ── Step 2: Build all chunks for all files at once ──
+    const fileMeta = [];
+    const allChunks = [];  // flat array: { globalIndex, data }
+    let chunkCursor = 0;
+
+    for (let f = 0; f < files.length; f++) {
+      const chunks = splitIntoChunks(base64Array[f]);
       fileMeta.push({
-        name: file.name,
-        type: file.type || 'application/octet-stream',
-        size: file.size,
+        name: files[f].name,
+        type: files[f].type || 'application/octet-stream',
+        size: files[f].size,
         chunkStart: chunkCursor,
         chunkCount: chunks.length,
       });
-
-      // Write chunks to Firestore
-      await writeChunks(shareData.code, chunks, chunkCursor);
+      for (let i = 0; i < chunks.length; i++) {
+        allChunks.push({ globalIndex: chunkCursor + i, data: chunks[i] });
+      }
       chunkCursor += chunks.length;
-
-      // Progress: 10-85% range across all files
-      onProgress?.(10 + Math.round(((f + 1) / files.length) * 75));
     }
 
-    totalChunks = chunkCursor;
+    // ── Step 3: Upload ALL chunks in parallel batches ──
+    if (allChunks.length > 0) {
+      await writeChunksParallel(shareData.code, allChunks, (done, total) => {
+        // Progress: 25% to 85% during chunk uploads
+        onProgress?.(25 + Math.round((done / total) * 60));
+      });
+    }
 
+    onProgress?.(90);
+
+    // ── Step 4: Write main document ──
     const docData = {
       ...shareData,
       files: fileMeta,
-      totalChunks,
+      totalChunks: chunkCursor,
       createdAt: Timestamp.fromDate(now),
       expiresAt: Timestamp.fromDate(expires),
       downloadCount: 0,
@@ -172,7 +217,7 @@ export async function createShare(shareData, files = [], onProgress) {
 
 /**
  * Retrieve a share by code.
- * Reassembles multi-file chunks. Returns files array with dataUrl for each.
+ * OPTIMIZED: reads ALL chunks across ALL files in parallel.
  */
 export async function retrieveShare(code) {
   if (isFirebaseConfigured()) {
@@ -182,7 +227,7 @@ export async function retrieveShare(code) {
 
     if (isExpired(data.expiresAt)) {
       try {
-        if (data.totalChunks > 0) await deleteAllChunks(code, data.totalChunks);
+        if (data.totalChunks > 0) await deleteChunksParallel(code, data.totalChunks);
         await deleteDoc(doc(db, 'shares', code));
       } catch (e) { console.warn('Cleanup failed:', e); }
       return { status: 'expired' };
@@ -199,25 +244,29 @@ export async function retrieveShare(code) {
       if (data.fileUrl === 'firestore-embedded' && data.fileData) {
         data.files[0].dataUrl = data.fileData;
       } else if (data.fileUrl === 'firestore-chunked' && data.fileChunks > 0) {
-        try { data.files[0].dataUrl = await readChunks(code, 0, data.fileChunks); }
+        try { data.files[0].dataUrl = await readChunksParallel(code, 0, data.fileChunks); }
         catch { data.files[0].dataUrl = ''; }
       }
       return { status: 'ok', data };
     }
 
-    // New multi-file format: reassemble each file from chunks
+    // New multi-file format: read ALL files' chunks in PARALLEL
     if (data.files && data.files.length > 0 && data.totalChunks > 0) {
-      for (const fileMeta of data.files) {
-        try {
-          fileMeta.dataUrl = await readChunks(code, fileMeta.chunkStart, fileMeta.chunkCount);
-        } catch (e) {
-          console.error('Failed to read chunks for', fileMeta.name, e);
-          fileMeta.dataUrl = '';
-        }
-      }
+      const results = await Promise.all(
+        data.files.map(async (fileMeta) => {
+          try {
+            return await readChunksParallel(code, fileMeta.chunkStart, fileMeta.chunkCount);
+          } catch (e) {
+            console.error('Failed to read chunks for', fileMeta.name, e);
+            return '';
+          }
+        })
+      );
+      // Assign reassembled data to each file
+      data.files.forEach((fileMeta, i) => { fileMeta.dataUrl = results[i]; });
     }
 
-    // Demo files that already have dataUrl
+    // Shallow copy files array
     if (data.files) {
       data.files = data.files.map(f => ({ ...f }));
     }
@@ -254,7 +303,7 @@ export async function deleteShare(code) {
     try {
       const snap = await getDoc(doc(db, 'shares', code));
       if (snap.exists() && snap.data().totalChunks > 0) {
-        await deleteAllChunks(code, snap.data().totalChunks);
+        await deleteChunksParallel(code, snap.data().totalChunks);
       }
     } catch { /* ignore */ }
     await deleteDoc(doc(db, 'shares', code));
@@ -283,15 +332,16 @@ export async function cleanupExpiredShares() {
     const snapshot = await getDocs(expiredQuery);
     if (snapshot.empty) return;
 
+    // Delete all expired shares in parallel
     let deleted = 0;
-    for (const docSnap of snapshot.docs) {
+    await Promise.all(snapshot.docs.map(async (docSnap) => {
       try {
         const data = docSnap.data();
-        if (data.totalChunks > 0) await deleteAllChunks(docSnap.id, data.totalChunks);
+        if (data.totalChunks > 0) await deleteChunksParallel(docSnap.id, data.totalChunks);
         await deleteDoc(doc(db, 'shares', docSnap.id));
         deleted++;
       } catch (e) { console.warn('Cleanup failed:', docSnap.id, e); }
-    }
+    }));
     if (deleted > 0) console.log(`🧹 Cleaned up ${deleted} expired share(s)`);
   } catch (e) { console.warn('Cleanup sweep failed:', e); }
 }
