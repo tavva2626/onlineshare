@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FiSend, FiDownload, FiLock, FiClock, FiZap, FiShield, FiCode, FiFile, FiImage, FiClipboard } from 'react-icons/fi';
+import { FiSend, FiDownload, FiLock, FiClock, FiZap, FiShield, FiCode, FiFile, FiImage, FiClipboard, FiMessageCircle } from 'react-icons/fi';
 import { HiOutlineLightningBolt } from 'react-icons/hi';
 
 const features = [
@@ -106,6 +106,70 @@ export default function Home() {
                 {uc.emoji} {uc.label}
               </span>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Quick Tools Section ─── */}
+      <section className="py-12 bg-white/50 dark:bg-surface-900/50 backdrop-blur-sm border-y border-surface-200/30 dark:border-surface-800/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl md:text-3xl font-bold text-surface-900 dark:text-surface-100">
+              ⚡ Explore <span className="gradient-text">Interactive Tools</span>
+            </h2>
+            <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
+              Snappy, instant, and real-time utilities for modern productivity.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Live Clipboard */}
+            <Link to="/clipboard" className="glass-card p-6 flex flex-col justify-between group hover:shadow-xl hover:shadow-brand-500/10 transition-all duration-300 hover:-translate-y-1">
+              <div>
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-500 to-accent-500 flex items-center justify-center mb-4 text-white shadow-md">
+                  <FiClipboard className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-surface-900 dark:text-surface-100 group-hover:text-brand-500 transition-colors">Live Clipboard</h3>
+                <p className="text-sm text-surface-500 dark:text-surface-400 mt-2">
+                  Sync text in real-time between devices. Copy on mobile, paste on laptop instantly.
+                </p>
+              </div>
+              <div className="mt-4 text-xs font-semibold text-brand-500 flex items-center gap-1">
+                Open Clipboard &rarr;
+              </div>
+            </Link>
+
+            {/* Temp Chat */}
+            <Link to="/chat" className="glass-card p-6 flex flex-col justify-between group hover:shadow-xl hover:shadow-brand-500/10 transition-all duration-300 hover:-translate-y-1">
+              <div>
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent-500 to-brand-500 flex items-center justify-center mb-4 text-white shadow-md">
+                  <FiMessageCircle className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-surface-900 dark:text-surface-100 group-hover:text-accent-500 transition-colors">Temp Chat Room</h3>
+                <p className="text-sm text-surface-500 dark:text-surface-400 mt-2">
+                  Create secure, temporary group chatrooms without signup. Auto-deletes in 24 hours.
+                </p>
+              </div>
+              <div className="mt-4 text-xs font-semibold text-accent-500 flex items-center gap-1">
+                Start Chatting &rarr;
+              </div>
+            </Link>
+
+            {/* Image Compressor */}
+            <Link to="/tools/image-compressor" className="glass-card p-6 flex flex-col justify-between group hover:shadow-xl hover:shadow-brand-500/10 transition-all duration-300 hover:-translate-y-1">
+              <div>
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center mb-4 text-white shadow-md">
+                  <FiImage className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-surface-900 dark:text-surface-100 group-hover:text-purple-500 transition-colors">Image Compressor</h3>
+                <p className="text-sm text-surface-500 dark:text-surface-400 mt-2">
+                  Compress images in-browser to reduce size before sharing. 100% private & client-side.
+                </p>
+              </div>
+              <div className="mt-4 text-xs font-semibold text-purple-500 flex items-center gap-1">
+                Compress Images &rarr;
+              </div>
+            </Link>
           </div>
         </div>
       </section>

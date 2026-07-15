@@ -8,6 +8,9 @@ import Send from './pages/Send';
 import Receive from './pages/Receive';
 import About from './pages/About';
 import Privacy from './pages/Privacy';
+import Clipboard from './pages/Clipboard';
+import Chat from './pages/Chat';
+import ImageCompressor from './pages/ImageCompressor';
 import { cleanupExpiredShares } from './services/shareService';
 
 export default function App() {
@@ -43,6 +46,9 @@ export default function App() {
               <Route path="/receive" element={<Receive />} />
               <Route path="/about" element={<About />} />
               <Route path="/privacy" element={<Privacy />} />
+              <Route path="/clipboard" element={<Clipboard />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/tools/image-compressor" element={<ImageCompressor />} />
             </Routes>
           </main>
 

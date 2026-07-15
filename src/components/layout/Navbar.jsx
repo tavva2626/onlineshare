@@ -8,6 +8,9 @@ const navLinks = [
   { to: '/', label: 'Home' },
   { to: '/send', label: 'Send' },
   { to: '/receive', label: 'Receive' },
+  { to: '/clipboard', label: 'Clipboard' },
+  { to: '/chat', label: 'Chat' },
+  { to: '/tools/image-compressor', label: 'Compressor' },
   { to: '/about', label: 'About' },
 ];
 
@@ -93,7 +96,7 @@ export default function Navbar() {
       {/* Mobile menu */}
       <div
         className={`md:hidden overflow-hidden transition-all duration-300 ${
-          menuOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
+          menuOpen ? 'max-h-[450px] opacity-100' : 'max-h-0 opacity-0'
         }`}
       >
         <div className="px-4 pb-4 space-y-1 bg-white/90 dark:bg-surface-900/90 backdrop-blur-xl border-t border-surface-200/50 dark:border-surface-700/50">
