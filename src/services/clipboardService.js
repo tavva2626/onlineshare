@@ -16,15 +16,16 @@ function saveDemoClipboards(clips) {
   localStorage.setItem(DEMO_KEY, JSON.stringify(clips));
 }
 
-/* ─── Public API ─── */
+/* ─── Public API (using shares collection for security rules compatibility) ─── */
 
 export async function clipboardExists(code) {
   if (isFirebaseConfigured()) {
-    const snap = await getDoc(doc(db, 'clipboards', code));
+    const snap = await getDoc(doc(db, 'shares', code));
     if (!snap.exists()) return false;
     const data = snap.data();
+    if (data.contentType !== 'clipboard') return false;
     if (isExpired(data.expiresAt)) {
-      try { await deleteDoc(doc(db, 'clipboards', code)); } catch {}
+      try { await deleteDoc(doc(db, 'shares', code)); } catch {}
       return false;
     }
     return true;
@@ -46,12 +47,14 @@ export async function createClipboard(code) {
 
   if (isFirebaseConfigured()) {
     const docData = {
+      contentType: 'clipboard',
       content: '',
       createdAt: Timestamp.fromDate(now),
       expiresAt: Timestamp.fromDate(expires),
       lastUpdated: Timestamp.fromDate(now),
     };
-    await setDoc(doc(db, 'clipboards', code), docData);
+    // Saved in the 'shares' collection to utilize existing security rules
+    await setDoc(doc(db, 'shares', code), docData);
     return { code, expiresAt: docData.expiresAt };
   }
 
@@ -69,11 +72,12 @@ export async function createClipboard(code) {
 
 export async function getClipboard(code) {
   if (isFirebaseConfigured()) {
-    const snap = await getDoc(doc(db, 'clipboards', code));
+    const snap = await getDoc(doc(db, 'shares', code));
     if (!snap.exists()) return null;
     const data = snap.data();
+    if (data.contentType !== 'clipboard') return null;
     if (isExpired(data.expiresAt)) {
-      try { await deleteDoc(doc(db, 'clipboards', code)); } catch {}
+      try { await deleteDoc(doc(db, 'shares', code)); } catch {}
       return null;
     }
     return data;
@@ -93,7 +97,7 @@ export async function getClipboard(code) {
 export async function updateClipboardContent(code, content) {
   const now = new Date();
   if (isFirebaseConfigured()) {
-    await updateDoc(doc(db, 'clipboards', code), {
+    await updateDoc(doc(db, 'shares', code), {
       content,
       lastUpdated: Timestamp.fromDate(now),
     });
@@ -105,17 +109,16 @@ export async function updateClipboardContent(code, content) {
     clips[code].content = content;
     clips[code].lastUpdated = now.toISOString();
     saveDemoClipboards(clips);
-    // Dispatch storage event manually for same-tab triggers if needed
     window.dispatchEvent(new Event('storage'));
   }
 }
 
 export function subscribeToClipboard(code, callback) {
   if (isFirebaseConfigured()) {
-    return onSnapshot(doc(db, 'clipboards', code), (snap) => {
+    return onSnapshot(doc(db, 'shares', code), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (!isExpired(data.expiresAt)) {
+        if (data.contentType === 'clipboard' && !isExpired(data.expiresAt)) {
           callback(data);
           return;
         }
@@ -124,7 +127,7 @@ export function subscribeToClipboard(code, callback) {
     });
   }
 
-  // Demo mode: poll / storage listener combo
+  // Demo mode
   const checkUpdate = () => {
     const clips = getDemoClipboards();
     const clip = clips[code];
@@ -136,10 +139,7 @@ export function subscribeToClipboard(code, callback) {
   };
 
   window.addEventListener('storage', checkUpdate);
-  // Also poll slightly for local changes in same tab
   const interval = setInterval(checkUpdate, 1000);
-
-  // Initial call
   checkUpdate();
 
   return () => {

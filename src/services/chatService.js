@@ -1,12 +1,10 @@
 import { db, isFirebaseConfigured } from '../firebase';
 import {
-  doc, setDoc, getDoc, updateDoc, deleteDoc, Timestamp, onSnapshot,
-  collection, addDoc, query, orderBy, limit, getDocs
+  doc, setDoc, getDoc, updateDoc, deleteDoc, Timestamp, onSnapshot, arrayUnion
 } from 'firebase/firestore';
 import { isExpired } from '../utils/helpers';
 
 const DEMO_KEY = 'quickshare24-demo-chatrooms';
-const DEMO_MSG_KEY = 'quickshare24-demo-chatmessages';
 
 /* ─── localStorage helpers (demo mode) ─── */
 function getDemoRooms() {
@@ -18,36 +16,16 @@ function saveDemoRooms(rooms) {
   localStorage.setItem(DEMO_KEY, JSON.stringify(rooms));
 }
 
-function getDemoMessages(code) {
-  try {
-    const allMsgs = JSON.parse(localStorage.getItem(DEMO_MSG_KEY) || '{}');
-    return allMsgs[code] || [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDemoMessage(code, message) {
-  try {
-    const allMsgs = JSON.parse(localStorage.getItem(DEMO_MSG_KEY) || '{}');
-    if (!allMsgs[code]) allMsgs[code] = [];
-    allMsgs[code].push(message);
-    localStorage.setItem(DEMO_MSG_KEY, JSON.stringify(allMsgs));
-    window.dispatchEvent(new Event('storage')); // trigger update
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-/* ─── Public API ─── */
+/* ─── Public API (using shares collection for security rules compatibility) ─── */
 
 export async function chatRoomExists(code) {
   if (isFirebaseConfigured()) {
-    const snap = await getDoc(doc(db, 'chatrooms', code));
+    const snap = await getDoc(doc(db, 'shares', code));
     if (!snap.exists()) return false;
     const data = snap.data();
+    if (data.contentType !== 'chatroom') return false;
     if (isExpired(data.expiresAt)) {
-      try { await deleteChatRoom(code); } catch {}
+      try { await deleteDoc(doc(db, 'shares', code)); } catch {}
       return false;
     }
     return true;
@@ -69,14 +47,18 @@ export async function createChatRoom(code) {
 
   if (isFirebaseConfigured()) {
     const docData = {
+      contentType: 'chatroom',
+      messages: [],
       createdAt: Timestamp.fromDate(now),
       expiresAt: Timestamp.fromDate(expires),
     };
-    await setDoc(doc(db, 'chatrooms', code), docData);
+    // Saved in the 'shares' collection to utilize existing security rules
+    await setDoc(doc(db, 'shares', code), docData);
     return { code, expiresAt: docData.expiresAt };
   }
 
   const docData = {
+    messages: [],
     createdAt: now.toISOString(),
     expiresAt: expires.toISOString(),
   };
@@ -88,11 +70,12 @@ export async function createChatRoom(code) {
 
 export async function getChatRoom(code) {
   if (isFirebaseConfigured()) {
-    const snap = await getDoc(doc(db, 'chatrooms', code));
+    const snap = await getDoc(doc(db, 'shares', code));
     if (!snap.exists()) return null;
     const data = snap.data();
+    if (data.contentType !== 'chatroom') return null;
     if (isExpired(data.expiresAt)) {
-      try { await deleteChatRoom(code); } catch {}
+      try { await deleteDoc(doc(db, 'shares', code)); } catch {}
       return null;
     }
     return data;
@@ -111,59 +94,65 @@ export async function getChatRoom(code) {
 
 export async function sendMessage(code, { text, sender, senderColor }) {
   const now = new Date();
-  if (isFirebaseConfigured()) {
-    await addDoc(collection(db, 'chatrooms', code, 'messages'), {
-      text,
-      sender,
-      senderColor,
-      createdAt: Timestamp.fromDate(now),
-    });
-    return;
-  }
-
-  const message = {
-    id: String(Math.random()),
+  const messageData = {
+    id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     text,
     sender,
     senderColor,
     createdAt: now.toISOString(),
   };
-  saveDemoMessage(code, message);
+
+  if (isFirebaseConfigured()) {
+    await updateDoc(doc(db, 'shares', code), {
+      messages: arrayUnion(messageData)
+    });
+    return;
+  }
+
+  const rooms = getDemoRooms();
+  if (rooms[code]) {
+    rooms[code].messages.push(messageData);
+    saveDemoRooms(rooms);
+    window.dispatchEvent(new Event('storage'));
+  }
 }
 
 export function subscribeToMessages(code, callback) {
   if (isFirebaseConfigured()) {
-    const q = query(
-      collection(db, 'chatrooms', code, 'messages'),
-      orderBy('createdAt', 'asc'),
-      limit(200)
-    );
-    return onSnapshot(q, (snap) => {
-      const messages = snap.docs.map((docSnap) => {
-        const data = docSnap.data();
-        return {
-          id: docSnap.id,
-          ...data,
-          createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-        };
-      });
-      callback(messages);
+    return onSnapshot(doc(db, 'shares', code), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.contentType === 'chatroom' && !isExpired(data.expiresAt)) {
+          // Map ISO string dates back to Date objects for the UI
+          const msgs = (data.messages || []).map(m => ({
+            ...m,
+            createdAt: new Date(m.createdAt)
+          }));
+          callback(msgs);
+          return;
+        }
+      }
+      callback([]);
     });
   }
 
-  // Demo mode listener
+  // Demo mode
   const checkUpdate = () => {
-    const msgs = getDemoMessages(code).map(m => ({
-      ...m,
-      createdAt: new Date(m.createdAt),
-    }));
-    callback(msgs);
+    const rooms = getDemoRooms();
+    const room = rooms[code];
+    if (room && !isExpired(room.expiresAt)) {
+      const msgs = (room.messages || []).map(m => ({
+        ...m,
+        createdAt: new Date(m.createdAt)
+      }));
+      callback(msgs);
+    } else {
+      callback([]);
+    }
   };
 
   window.addEventListener('storage', checkUpdate);
   const interval = setInterval(checkUpdate, 1000);
-
-  // Initial load
   checkUpdate();
 
   return () => {
@@ -174,26 +163,11 @@ export function subscribeToMessages(code, callback) {
 
 export async function deleteChatRoom(code) {
   if (isFirebaseConfigured()) {
-    // Delete all messages first (Firestore requires manual subcollection deletion)
-    try {
-      const q = query(collection(db, 'chatrooms', code, 'messages'));
-      const snap = await getDocs(q);
-      const deletePromises = snap.docs.map(docSnap => deleteDoc(docSnap.ref));
-      await Promise.all(deletePromises);
-    } catch (err) {
-      console.warn('Failed to delete messages subcollection:', err);
-    }
-    await deleteDoc(doc(db, 'chatrooms', code));
+    await deleteDoc(doc(db, 'shares', code));
     return;
   }
 
   const rooms = getDemoRooms();
   delete rooms[code];
   saveDemoRooms(rooms);
-
-  try {
-    const allMsgs = JSON.parse(localStorage.getItem(DEMO_MSG_KEY) || '{}');
-    delete allMsgs[code];
-    localStorage.setItem(DEMO_MSG_KEY, JSON.stringify(allMsgs));
-  } catch {}
 }

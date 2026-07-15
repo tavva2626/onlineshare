@@ -115,7 +115,11 @@ export default function ImageCompressor() {
       const results = await Promise.all(
         images.map(async (img) => {
           try {
-            const blob = await compressImage(img.file, quality, format);
+            let blob = await compressImage(img.file, quality, format);
+            // Fallback to original file if compression increases the size
+            if (blob.size >= img.originalSize) {
+              blob = img.file;
+            }
             return { ...img, compressedBlob: blob, compressedSize: blob.size };
           } catch {
             return { ...img, compressedBlob: null, compressedSize: null };
